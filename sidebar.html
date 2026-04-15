@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Suggest Collector</title>
+  <link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Google 建议词采集</h1>
+    </header>
+
+    <!-- Tab Navigation -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="simple">简单模式</button>
+      <button class="tab-btn" data-tab="recursive">递归模式</button>
+    </div>
+
+    <!-- Simple Mode -->
+    <div class="tab-content active" id="simpleTab">
+      <form id="simpleForm" class="form">
+        <label class="input-label">输入关键词</label>
+        <input type="text" id="simpleQuery" class="text-input" placeholder="例如: python" required>
+        <button type="submit" class="primary-btn">获取建议</button>
+      </form>
+    </div>
+
+    <!-- Recursive Mode -->
+    <div class="tab-content" id="recursiveTab">
+      <form id="recursiveForm" class="form">
+        <label class="input-label">主关键词</label>
+        <input type="text" id="recursiveQuery" class="text-input" placeholder="例如: python" required>
+        <div class="hint">深度 5，间隔 1.5s，自动过滤包含主关键词的结果</div>
+        <button type="submit" class="primary-btn">开始递归采集</button>
+      </form>
+    </div>
+
+    <!-- Progress / Status -->
+    <div class="status-bar" id="statusBar" style="display: none;">
+      <span id="statusText">准备就绪</span>
+      <button id="stopBtn" class="danger-btn" style="display: none;">停止</button>
+    </div>
+
+    <!-- Results -->
+    <div class="results-section" id="resultsSection" style="display: none;">
+      <div class="results-header">
+        <span class="results-count">共 <span id="resultCount">0</span> 条</span>
+        <div class="results-actions">
+          <button id="copyBtn" class="secondary-btn">复制全部</button>
+          <button id="exportBtn" class="secondary-btn">导出 CSV</button>
+        </div>
+      </div>
+      <ul class="results-list" id="resultsList"></ul>
+    </div>
+  </div>
+
+  <script src="sidebar.js"></script>
+</body>
+</html>
