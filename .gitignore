@@ -1,3 +1,4 @@
 .worktrees/
 test_result
 .DS_Store
+.playwright-mcp
