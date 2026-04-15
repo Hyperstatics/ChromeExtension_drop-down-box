@@ -84,3 +84,84 @@ function setLoading(isLoading, mode) {
     : document.querySelector('#recursiveForm .primary-btn');
   btn.disabled = isLoading;
 }
+
+const recursiveForm = document.getElementById('recursiveForm');
+const recursiveQuery = document.getElementById('recursiveQuery');
+const stopBtn = document.getElementById('stopBtn');
+
+let abortController = null;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+recursiveForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const mainKeyword = recursiveQuery.value.trim();
+  if (!mainKeyword) return;
+
+  abortController = new AbortController();
+  const { signal } = abortController;
+
+  setLoading(true, 'recursive');
+  stopBtn.style.display = 'inline-block';
+  renderResults([]);
+
+  const results = new Set();
+  const processed = new Set();
+  const queue = [];
+
+  queue.push({ query: mainKeyword, depth: 0 });
+  const mainKeywordLower = mainKeyword.toLowerCase();
+  const MAX_DEPTH = 5;
+  const DELAY_MS = 1500;
+
+  while (queue.length > 0) {
+    if (signal.aborted) {
+      updateStatus('已停止');
+      break;
+    }
+
+    const { query, depth } = queue.shift();
+
+    if (processed.has(query)) continue;
+    processed.add(query);
+
+    updateStatus(`[深度 ${depth}] 正在处理: ${query} | 已收集 ${results.size} 条`);
+
+    try {
+      const suggestions = await fetchSuggestions(query);
+      const filtered = suggestions.filter((s) =>
+        s.toLowerCase().includes(mainKeywordLower)
+      );
+
+      for (const suggestion of filtered) {
+        if (!results.has(suggestion)) {
+          results.add(suggestion);
+          renderResults(Array.from(results));
+
+          if (depth < MAX_DEPTH) {
+            queue.push({ query: suggestion, depth: depth + 1 });
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`处理 "${query}" 失败:`, err);
+    }
+
+    if (queue.length > 0 && !signal.aborted) {
+      await sleep(DELAY_MS);
+    }
+  }
+
+  updateStatus(`递归完成! 共收集 ${results.size} 条`);
+  stopBtn.style.display = 'none';
+  setLoading(false, 'recursive');
+  abortController = null;
+});
+
+stopBtn.addEventListener('click', () => {
+  if (abortController) {
+    abortController.abort();
+  }
+});
