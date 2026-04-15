@@ -3,7 +3,7 @@
   "name": "Google Suggest Collector",
   "version": "1.0.0",
   "description": "采集 Google 下拉框搜索建议",
-  "permissions": ["sidePanel", "activeTab"],
+  "permissions": ["sidePanel", "activeTab", "scripting"],
   "host_permissions": ["https://suggestqueries.google.com/*"],
   "background": {
     "service_worker": "background.js"

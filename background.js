@@ -6,6 +6,33 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 });
 
+function sendToContentScript(tabId, payload, sendResponse, retry = true) {
+  chrome.tabs.sendMessage(tabId, payload, (response) => {
+    if (chrome.runtime.lastError) {
+      if (retry && chrome.runtime.lastError.message.includes('Receiving end does not exist')) {
+        // Dynamically inject content script and retry once
+        chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['content-script.js']
+        }, () => {
+          if (chrome.runtime.lastError) {
+            sendResponse({ error: chrome.runtime.lastError.message });
+            return;
+          }
+          // Retry after a short delay to let the script initialize
+          setTimeout(() => {
+            sendToContentScript(tabId, payload, sendResponse, false);
+          }, 300);
+        });
+        return;
+      }
+      sendResponse({ error: chrome.runtime.lastError.message });
+    } else {
+      sendResponse(response);
+    }
+  });
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.target === 'contentScript') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -18,13 +45,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ error: '请先在 Google 搜索页面打开本扩展' });
         return;
       }
-      chrome.tabs.sendMessage(activeTab.id, request.payload, (response) => {
-        if (chrome.runtime.lastError) {
-          sendResponse({ error: chrome.runtime.lastError.message });
-        } else {
-          sendResponse(response);
-        }
-      });
+      sendToContentScript(activeTab.id, request.payload, sendResponse);
     });
     return true; // keep channel open for async
   }
