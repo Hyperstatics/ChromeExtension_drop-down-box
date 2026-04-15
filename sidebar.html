@@ -12,7 +12,9 @@
       <h1>Google 建议词采集</h1>
     </header>
 
+    <!-- API Mode -->
     <div class="form-section">
+      <div class="section-label">API 采集模式</div>
       <form id="collectForm" class="form">
         <label class="input-label">关键词</label>
         <input type="text" id="mainQuery" class="text-input" placeholder="例如: python" required>
@@ -20,7 +22,7 @@
         <div class="two-col">
           <div class="form-col">
             <label class="input-label">深度</label>
-            <input type="number" id="depthInput" class="text-input" min="1" max="10" value="1" required>
+            <input type="number" id="depthInput" class="text-input" min="0" max="10" value="0" required>
             <div class="hint">建议 0-5，0 = 只获取一次建议</div>
           </div>
           <div class="form-col">
@@ -31,6 +33,17 @@
         </div>
 
         <button type="submit" class="primary-btn">开始采集</button>
+      </form>
+    </div>
+
+    <!-- Page Scrape Mode -->
+    <div class="form-section secondary-section">
+      <div class="section-label">页面抓取模式</div>
+      <form id="pageScrapeForm" class="form">
+        <label class="input-label">关键词（用于过滤结果）</label>
+        <input type="text" id="pageQuery" class="text-input" placeholder="例如: ai video generator" required>
+        <div class="hint">需先在 google.com 搜索框输入并出现下拉建议</div>
+        <button type="submit" class="primary-btn secondary">从当前页面抓取</button>
       </form>
     </div>
 
