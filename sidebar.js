@@ -34,7 +34,6 @@ const copyBtn = document.getElementById('copyBtn');
 const exportBtn = document.getElementById('exportBtn');
 const stopBtn = document.getElementById('stopBtn');
 const apiNoFilter = document.getElementById('apiNoFilter');
-const pageNoFilter = document.getElementById('pageNoFilter');
 
 let currentResults = [];
 let abortController = null;
@@ -194,7 +193,6 @@ const pageQuery = document.getElementById('pageQuery');
 pageScrapeForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const keyword = pageQuery.value.trim();
-  if (!keyword) return;
 
   updateStatus('正在从当前页面抓取...');
   pageScrapeForm.querySelector('.primary-btn').disabled = true;
@@ -210,9 +208,9 @@ pageScrapeForm.addEventListener('submit', async (e) => {
       renderResults([]);
     } else if (response && Array.isArray(response.suggestions)) {
       const keywordLower = keyword.toLowerCase();
-      const filtered = pageNoFilter.checked
-        ? response.suggestions
-        : response.suggestions.filter((s) => s.toLowerCase().includes(keywordLower));
+      const filtered = keywordLower
+        ? response.suggestions.filter((s) => s.toLowerCase().includes(keywordLower))
+        : response.suggestions;
       renderResults(filtered);
       updateStatus(`抓取完成! 页面建议 ${response.suggestions.length} 条，过滤后 ${filtered.length} 条`);
     } else {

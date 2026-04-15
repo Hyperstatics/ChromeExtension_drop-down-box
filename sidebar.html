@@ -33,9 +33,10 @@
         </div>
 
         <label class="checkbox-label">
-          <input type="checkbox" id="apiNoFilter">
-          <span>显示所有结果（不过滤）</span>
+          <input type="checkbox" id="apiNoFilter" checked>
+          <span>不过滤（显示所有结果）</span>
         </label>
+        <div class="hint">取消勾选则只保留包含关键词的建议</div>
 
         <button type="submit" class="primary-btn">开始采集</button>
       </form>
@@ -45,13 +46,9 @@
     <div class="form-section secondary-section">
       <div class="section-label">页面抓取模式</div>
       <form id="pageScrapeForm" class="form">
-        <label class="input-label">关键词（用于过滤结果）</label>
-        <input type="text" id="pageQuery" class="text-input" placeholder="例如: ai video generator" required>
-        <div class="hint">需先在 google.com 搜索框输入并出现下拉建议</div>
-        <label class="checkbox-label">
-          <input type="checkbox" id="pageNoFilter">
-          <span>显示所有结果（不过滤）</span>
-        </label>
+        <label class="input-label">关键词（用于过滤结果，留空则显示所有）</label>
+        <input type="text" id="pageQuery" class="text-input" placeholder="例如: ai video generator">
+        <div class="hint">需先在 google.com 搜索框输入并出现下拉建议；留空不过滤</div>
         <button type="submit" class="primary-btn secondary">从当前页面抓取</button>
       </form>
     </div>
