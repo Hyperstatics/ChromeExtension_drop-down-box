@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Google Suggest Collector",
+  "version": "1.0.0",
+  "description": "采集 Google 下拉框搜索建议",
+  "permissions": ["sidePanel", "activeTab"],
+  "host_permissions": ["https://suggestqueries.google.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidebar.html"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}
