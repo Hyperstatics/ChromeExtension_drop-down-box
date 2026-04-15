@@ -185,3 +185,42 @@ exportBtn.addEventListener('click', () => {
 
   updateStatus('CSV 已导出');
 });
+
+const pageScrapeForm = document.getElementById('pageScrapeForm');
+const pageQuery = document.getElementById('pageQuery');
+
+pageScrapeForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const keyword = pageQuery.value.trim();
+  if (!keyword) return;
+
+  updateStatus('正在从当前页面抓取...');
+  pageScrapeForm.querySelector('.primary-btn').disabled = true;
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      target: 'contentScript',
+      payload: { action: 'scrapeSuggestions' }
+    });
+
+    if (response && response.error) {
+      updateStatus(`抓取失败: ${response.error}`);
+      renderResults([]);
+    } else if (response && Array.isArray(response.suggestions)) {
+      const keywordLower = keyword.toLowerCase();
+      const filtered = response.suggestions.filter((s) =>
+        s.toLowerCase().includes(keywordLower)
+      );
+      renderResults(filtered);
+      updateStatus(`抓取完成! 页面建议 ${response.suggestions.length} 条，过滤后 ${filtered.length} 条`);
+    } else {
+      updateStatus('未获取到建议，请确认 Google 页面已显示下拉框');
+      renderResults([]);
+    }
+  } catch (err) {
+    updateStatus(`请求失败: ${err.message}`);
+    renderResults([]);
+  } finally {
+    pageScrapeForm.querySelector('.primary-btn').disabled = false;
+  }
+});

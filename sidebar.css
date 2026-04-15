@@ -164,3 +164,24 @@ body {
 .results-list li:hover {
   background: #f9fafb;
 }
+
+.section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 10px;
+}
+
+.secondary-section {
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+}
+
+.primary-btn.secondary {
+  background: #4b5563;
+  margin-top: 4px;
+}
+
+.primary-btn.secondary:hover {
+  opacity: 0.92;
+}
