@@ -23,15 +23,19 @@ async function fetchSuggestions(query) {
   return suggestions;
 }
 
-const simpleForm = document.getElementById('simpleForm');
-const simpleQuery = document.getElementById('simpleQuery');
+const collectForm = document.getElementById('collectForm');
+const mainQuery = document.getElementById('mainQuery');
+const depthInput = document.getElementById('depthInput');
+const delayInput = document.getElementById('delayInput');
 const resultsSection = document.getElementById('resultsSection');
 const resultsList = document.getElementById('resultsList');
 const resultCount = document.getElementById('resultCount');
 const copyBtn = document.getElementById('copyBtn');
 const exportBtn = document.getElementById('exportBtn');
+const stopBtn = document.getElementById('stopBtn');
 
 let currentResults = [];
+let abortController = null;
 
 function renderResults(items) {
   currentResults = items;
@@ -52,25 +56,6 @@ function renderResults(items) {
   resultsSection.style.display = 'flex';
 }
 
-simpleForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const query = simpleQuery.value.trim();
-  if (!query) return;
-
-  setLoading(true, 'simple');
-  updateStatus('正在获取建议...');
-
-  try {
-    const suggestions = await fetchSuggestions(query);
-    renderResults(suggestions);
-    updateStatus(`获取完成，共 ${suggestions.length} 条`);
-  } catch (err) {
-    updateStatus(`请求失败: ${err.message}`);
-  } finally {
-    setLoading(false, 'simple');
-  }
-});
-
 function updateStatus(text) {
   const statusBar = document.getElementById('statusBar');
   const statusText = document.getElementById('statusText');
@@ -78,43 +63,35 @@ function updateStatus(text) {
   statusBar.style.display = 'flex';
 }
 
-function setLoading(isLoading, mode) {
-  const btn = mode === 'simple'
-    ? simpleForm.querySelector('.primary-btn')
-    : document.querySelector('#recursiveForm .primary-btn');
-  btn.disabled = isLoading;
+function setLoading(isLoading) {
+  collectForm.querySelector('.primary-btn').disabled = isLoading;
 }
-
-const recursiveForm = document.getElementById('recursiveForm');
-const recursiveQuery = document.getElementById('recursiveQuery');
-const stopBtn = document.getElementById('stopBtn');
-
-let abortController = null;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-recursiveForm.addEventListener('submit', async (e) => {
+collectForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const mainKeyword = recursiveQuery.value.trim();
+  const mainKeyword = mainQuery.value.trim();
+  const maxDepth = parseInt(depthInput.value, 10) || 1;
+  let baseDelay = parseFloat(delayInput.value) * 1000 || 2500;
   if (!mainKeyword) return;
 
   abortController = new AbortController();
   const { signal } = abortController;
 
-  setLoading(true, 'recursive');
+  setLoading(true);
   stopBtn.style.display = 'inline-block';
   renderResults([]);
 
   const results = new Set();
   const processed = new Set();
   const queue = [];
+  let consecutiveErrors = 0;
 
   queue.push({ query: mainKeyword, depth: 0 });
   const mainKeywordLower = mainKeyword.toLowerCase();
-  const MAX_DEPTH = 5;
-  const DELAY_MS = 1500;
 
   while (queue.length > 0) {
     if (signal.aborted) {
@@ -127,10 +104,21 @@ recursiveForm.addEventListener('submit', async (e) => {
     if (processed.has(query)) continue;
     processed.add(query);
 
-    updateStatus(`[深度 ${depth}] 正在处理: ${query} | 已收集 ${results.size} 条`);
+    updateStatus(`[深度 ${depth}] 正在处理: ${query} | 已收集 ${results.size} 条 | 延迟 ${(baseDelay / 1000).toFixed(1)}s`);
+
+    let suggestions = [];
+    let success = false;
 
     try {
-      const suggestions = await fetchSuggestions(query);
+      suggestions = await fetchSuggestions(query);
+      success = true;
+      consecutiveErrors = 0;
+    } catch (err) {
+      consecutiveErrors++;
+      console.error(`处理 "${query}" 失败:`, err);
+    }
+
+    if (success) {
       const filtered = suggestions.filter((s) =>
         s.toLowerCase().includes(mainKeywordLower)
       );
@@ -140,23 +128,26 @@ recursiveForm.addEventListener('submit', async (e) => {
           results.add(suggestion);
           renderResults(Array.from(results));
 
-          if (depth < MAX_DEPTH) {
+          if (depth < maxDepth) {
             queue.push({ query: suggestion, depth: depth + 1 });
           }
         }
       }
-    } catch (err) {
-      console.error(`处理 "${query}" 失败:`, err);
+    }
+
+    if (consecutiveErrors > 0) {
+      baseDelay *= 2;
+      updateStatus(`请求异常，延迟退避至 ${(baseDelay / 1000).toFixed(1)}s`);
     }
 
     if (queue.length > 0 && !signal.aborted) {
-      await sleep(DELAY_MS);
+      await sleep(baseDelay);
     }
   }
 
-  updateStatus(`递归完成! 共收集 ${results.size} 条`);
+  updateStatus(`采集完成! 共收集 ${results.size} 条`);
   stopBtn.style.display = 'none';
-  setLoading(false, 'recursive');
+  setLoading(false);
   abortController = null;
 });
 
@@ -193,21 +184,4 @@ exportBtn.addEventListener('click', () => {
   URL.revokeObjectURL(url);
 
   updateStatus('CSV 已导出');
-});
-
-document.querySelectorAll('.tab-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
-
-    btn.classList.add('active');
-    const tabId = btn.getAttribute('data-tab');
-    document.getElementById(`${tabId}Tab`).classList.add('active');
-
-    // Hide results when switching tabs to avoid confusion
-    resultsSection.style.display = 'none';
-    currentResults = [];
-    resultsList.replaceChildren();
-    resultCount.textContent = '0';
-  });
 });
