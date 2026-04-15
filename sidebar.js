@@ -165,3 +165,32 @@ stopBtn.addEventListener('click', () => {
     abortController.abort();
   }
 });
+
+copyBtn.addEventListener('click', async () => {
+  if (currentResults.length === 0) return;
+  const text = currentResults.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    updateStatus('已复制到剪贴板');
+  } catch (err) {
+    updateStatus('复制失败');
+  }
+});
+
+exportBtn.addEventListener('click', () => {
+  if (currentResults.length === 0) return;
+
+  const csvContent = currentResults.map((r) => `"${r.replace(/"/g, '""')}"`).join('\n');
+  const blob = new Blob([ '\uFEFF' + csvContent ], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `suggestions_${new Date().toISOString().slice(0,19).replace(/[:T]/g, '-')}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  updateStatus('CSV 已导出');
+});
