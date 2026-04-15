@@ -33,6 +33,8 @@ const resultCount = document.getElementById('resultCount');
 const copyBtn = document.getElementById('copyBtn');
 const exportBtn = document.getElementById('exportBtn');
 const stopBtn = document.getElementById('stopBtn');
+const apiNoFilter = document.getElementById('apiNoFilter');
+const pageNoFilter = document.getElementById('pageNoFilter');
 
 let currentResults = [];
 let abortController = null;
@@ -119,9 +121,9 @@ collectForm.addEventListener('submit', async (e) => {
     }
 
     if (success) {
-      const filtered = suggestions.filter((s) =>
-        s.toLowerCase().includes(mainKeywordLower)
-      );
+      const filtered = apiNoFilter.checked
+        ? suggestions
+        : suggestions.filter((s) => s.toLowerCase().includes(mainKeywordLower));
 
       for (const suggestion of filtered) {
         if (!results.has(suggestion)) {
@@ -208,9 +210,9 @@ pageScrapeForm.addEventListener('submit', async (e) => {
       renderResults([]);
     } else if (response && Array.isArray(response.suggestions)) {
       const keywordLower = keyword.toLowerCase();
-      const filtered = response.suggestions.filter((s) =>
-        s.toLowerCase().includes(keywordLower)
-      );
+      const filtered = pageNoFilter.checked
+        ? response.suggestions
+        : response.suggestions.filter((s) => s.toLowerCase().includes(keywordLower));
       renderResults(filtered);
       updateStatus(`抓取完成! 页面建议 ${response.suggestions.length} 条，过滤后 ${filtered.length} 条`);
     } else {

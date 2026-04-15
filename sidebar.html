@@ -32,6 +32,11 @@
           </div>
         </div>
 
+        <label class="checkbox-label">
+          <input type="checkbox" id="apiNoFilter">
+          <span>显示所有结果（不过滤）</span>
+        </label>
+
         <button type="submit" class="primary-btn">开始采集</button>
       </form>
     </div>
@@ -43,6 +48,10 @@
         <label class="input-label">关键词（用于过滤结果）</label>
         <input type="text" id="pageQuery" class="text-input" placeholder="例如: ai video generator" required>
         <div class="hint">需先在 google.com 搜索框输入并出现下拉建议</div>
+        <label class="checkbox-label">
+          <input type="checkbox" id="pageNoFilter">
+          <span>显示所有结果（不过滤）</span>
+        </label>
         <button type="submit" class="primary-btn secondary">从当前页面抓取</button>
       </form>
     </div>
