@@ -19,10 +19,10 @@
 - **动态注入兜底**：如果扩展重新加载后 content script 未注入，background 会自动尝试重新注入
 
 ### SERP 内容提取
-- 在 `www.google.com/search` 结果页提取自然结果、YouTube 视频、Reddit / Quora 讨论、People Also Ask、相关搜索和拼写修正提示
+- 在 `www.google.com/search` 结果页按页面顺序导出 Sponsored Results、自然结果、AI Overview、Find related products & services、视频等 Google 原生模块；JSON 仍保留逐条结果、People Also Ask、相关搜索和拼写修正字段
 - 提供可读文本预览与复制、JSON 复制与下载，以及 DOM 诊断复制
 - 提取当前页面已渲染的内容，不会自动展开 PAA 或加载更多结果
-- 修正提示只接受真正的搜索纠错通知；广告区和第三方站点指标仍可留在页面上，但不会作为修正提示导出。分页数字不会作为相关搜索导出
+- 修正提示只接受真正的搜索纠错通知；Sponsored Results 单独导出。AITDK 和 SiteData.dev 指标仍可留在页面上，但不会进入导出内容。分页数字不会作为相关搜索导出
 
 ### 通用功能
 - **导出方式**：支持一键复制全部结果，或导出为 CSV 文件

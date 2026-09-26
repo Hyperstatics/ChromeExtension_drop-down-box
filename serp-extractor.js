@@ -1,13 +1,40 @@
 // Extractor adapted from keywords/tools/g-serp-collector.user.js v0.3.1.
 // The page script only reads the current Google SERP; the Side Panel owns export actions.
 (() => {
-  const VERSION = 'extension-1.1.2';
+  const VERSION = 'extension-1.1.3';
   let lastPayload = null;
   let lastError = null;
   const log = (...args) => console.log('[G SERP]', ...args);
   const logErr = (...args) => console.error('[G SERP]', ...args);
   function trim(s) {
     return (s == null ? "" : String(s)).replace(/\s+/g, " ").trim();
+  }
+
+  // Read Google-owned text while leaving the user's SEO extensions running.
+  const FOREIGN_UI = '.aitdk-site-metrics, .aitdk-site-metrics-container, [class*="aitdk-"], [id*="aitdk-"], .traffic-analysis-container, .simple-data-display, .sitedata-keyword-module, [class*="sitedata-"], [id*="sitedata-"]';
+  const BLOCK_TAGS = new Set(['DIV', 'P', 'LI', 'UL', 'OL', 'H1', 'H2', 'H3', 'H4', 'BR', 'SECTION', 'ARTICLE', 'TABLE', 'TR']);
+
+  function isForeign(el) {
+    return !!(el && el.closest && el.closest(FOREIGN_UI));
+  }
+
+  function nativeText(root) {
+    if (!root || isForeign(root)) return "";
+    const parts = [];
+    function visit(node) {
+      if (node.nodeType === 3) {
+        parts.push(node.nodeValue || "");
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      const el = node;
+      if (el.matches(FOREIGN_UI) || /^(SCRIPT|STYLE|NOSCRIPT|SVG)$/.test(el.tagName) || el.hidden || el.getAttribute('aria-hidden') === 'true' || /display\s*:\s*none/i.test(el.getAttribute('style') || '')) return;
+      if (BLOCK_TAGS.has(el.tagName)) parts.push("\n");
+      for (const child of el.childNodes) visit(child);
+      if (BLOCK_TAGS.has(el.tagName)) parts.push("\n");
+    }
+    visit(root);
+    return parts.join("").replace(/[^\S\n]+/g, " ").split("\n").map((line) => line.trim()).filter(Boolean).join("\n");
   }
 
   function safeHost(url) {
@@ -54,7 +81,8 @@
       const el = cands[i];
       if (el === rso) break;
       if (rso && el.contains(rso)) continue;
-      const t = trim(el.innerText);
+      if (isForeign(el)) continue;
+      const t = trim(nativeText(el));
       if (!t || t.length < 10 || t.length > 300 || !notice.test(t)) continue;
       const hasLink = el.tagName === "A"
         ? /\/search\?/.test(el.href) && el.href.includes("q=")
@@ -103,7 +131,7 @@
     ];
     for (const sel of sels) {
       const el = block.querySelector(sel);
-      const t = trim(el && el.innerText);
+      const t = trim(nativeText(el));
       if (t) return t;
     }
     return null;
@@ -117,11 +145,12 @@
     log("scanning h3 nodes:", h3s.length);
     h3s.forEach((h3, idx) => {
       try {
+        if (isForeign(h3)) return;
         const a = h3.closest("a[href]");
         if (!a) return;
         const href = a.href;
         if (!href || seen.has(href)) return;
-        const title = trim(h3.innerText);
+        const title = trim(nativeText(h3));
         if (!title) return;
         seen.add(href);
         results.push({
@@ -304,6 +333,71 @@
     return out;
   }
 
+  function sectionType(text) {
+    const start = text.slice(0, 120);
+    if (/sponsored results|resultados patrocinados|anuncios/i.test(start)) return 'sponsored';
+    if (/ai overview|vista creada con ia|resumen creado con ia/i.test(start)) return 'ai_overview';
+    if (/find related products\s*&\s*services|buscar productos y servicios relacionados/i.test(start)) return 'related_products_services';
+    if (/^(videos|vídeos)\b/i.test(start)) return 'videos';
+    return 'result';
+  }
+
+  function sectionLinks(root) {
+    const links = [];
+    const seen = new Set();
+    root.querySelectorAll('a[href]').forEach((a) => {
+      if (isForeign(a)) return;
+      const label = trim(nativeText(a));
+      const url = a.href;
+      if (!label || !/^https?:/.test(url) || seen.has(url)) return;
+      seen.add(url);
+      links.push({ label, url });
+    });
+    return links;
+  }
+
+  // Google mixes native modules with result cards. Keep their page order and
+  // text so new SERP modules remain visible even before they have a parser.
+  function extractSections() {
+    const roots = [];
+    const taw = document.querySelector('#taw');
+    if (taw && /sponsored results|resultados patrocinados|anuncios/i.test(nativeText(taw))) roots.push(taw);
+    const rso = document.querySelector('#rso');
+    if (rso) {
+      const blocks = Array.prototype.filter.call(rso.querySelectorAll('.MjjYud'),
+        (el) => !el.parentElement.closest('.MjjYud'));
+      roots.push(...(blocks.length ? blocks : rso.children));
+    }
+    // Featured modules can sit outside #rso, depending on the Google layout.
+    const moduleName = /^(sponsored results|resultados patrocinados|ai overview|vista creada con ia|resumen creado con ia|find related products\s*&\s*services|buscar productos y servicios relacionados|videos|vídeos)$/i;
+    document.querySelectorAll('#main *, #botstuff *, #bres *').forEach((el) => {
+      if (el.children.length || !moduleName.test(trim(el.textContent)) || isForeign(el)) return;
+      let block = el.closest('.MjjYud');
+      if (!block) {
+        block = el;
+        for (let i = 0; i < 6 && block.parentElement; i++) {
+          block = block.parentElement;
+          if (block.querySelectorAll('a[href]').length >= 2 || block.querySelector('[role="list"]')) break;
+        }
+      }
+      if (!roots.some((root) => root.contains(block) || block.contains(root))) roots.push(block);
+    });
+    roots.sort((a, b) => a === b ? 0 :
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
+    const out = [];
+    roots.forEach((root) => {
+      const body = nativeText(root);
+      if (body.length < 20) return;
+      const type = root === taw ? 'sponsored' : sectionType(body);
+      // #taw can also contain correction notices. Store only its sponsored part.
+      const text = root === taw && type === 'sponsored'
+        ? body.slice(body.search(/sponsored results|resultados patrocinados|anuncios/i))
+        : body;
+      out.push({ type, text, links: sectionLinks(root) });
+    });
+    return out;
+  }
+
   // Probe the DOM so a field going empty is diagnosable without DevTools.
   function probeDom() {
     const has = (sel) => {
@@ -347,6 +441,7 @@
     const results = organic.concat(videos).concat(discussions);
     const paa = extractPeopleAlsoAsk();
     const related = extractRelatedSearches();
+    const sections = extractSections();
     const payload = {
       query: getQuery(),
       corrected_query: correction ? correction.corrected : null,
@@ -357,6 +452,7 @@
       results: results,
       people_also_ask: paa,
       related_searches: related,
+      serp_sections: sections,
     };
     let organicN = 0, videoN = 0, discN = 0;
     results.forEach((r) => {
@@ -372,6 +468,7 @@
       desc_null: results.filter((r) => !r.desc).length,
       paa: paa.length,
       related: related.length,
+      sections: sections.length,
       correction: correction ? correction.corrected : null,
     });
     return payload;
@@ -387,6 +484,7 @@
     return [
       `结果 ${p.results.length}（网页 ${organicN} · 视频 ${videoN} · 讨论 ${discN}）`,
       `PAA ${p.people_also_ask.length} · 相关搜索 ${p.related_searches.length}`,
+      `页面模块 ${p.serp_sections.length}（广告 ${p.serp_sections.filter((s) => s.type === 'sponsored').length}）`,
     ].join("\n");
   }
 
@@ -399,6 +497,43 @@
     lines.push(`页面: ${p.page_url}`);
     lines.push(`抓取时间: ${p.captured_at}`);
     lines.push("");
+
+    if (p.serp_sections.length) {
+      const labels = {
+        sponsored: 'Sponsored Results',
+        ai_overview: 'AI Overview',
+        related_products_services: 'Find related products & services',
+        videos: 'Videos',
+        result: '搜索结果及其他模块',
+      };
+      p.serp_sections.forEach((section, i) => {
+        lines.push(`== ${i + 1}. ${labels[section.type]} ==`);
+        lines.push(section.text);
+        section.links.forEach((link) => lines.push(`- ${link.label}: ${link.url}`));
+        lines.push("");
+      });
+      const sectionUrls = new Set(p.serp_sections.flatMap((section) => section.links.map((link) => link.url)));
+      const missed = p.results.filter((result) => !sectionUrls.has(result.url));
+      if (missed.length) {
+        lines.push('== 其他已识别结果 ==');
+        missed.forEach((result) => {
+          lines.push(`${result.title}: ${result.url}`);
+          if (result.desc) lines.push(result.desc);
+        });
+        lines.push("");
+      }
+      if (p.people_also_ask.length) {
+        lines.push('== People Also Ask ==');
+        p.people_also_ask.forEach((q) => lines.push(`- ${q}`));
+        lines.push("");
+      }
+      if (p.related_searches.length) {
+        lines.push('== 相关搜索 ==');
+        p.related_searches.forEach((q) => lines.push(`- ${q}`));
+        lines.push("");
+      }
+      return lines.join("\n");
+    }
 
     const groups = { organic: [], video: [], discussion: [] };
     p.results.forEach((r) => {
@@ -455,6 +590,11 @@
             desc_null: p.results.filter((r) => !r.desc).length,
             paa_count: p.people_also_ask.length,
             related_count: p.related_searches.length,
+            sections_count: p.serp_sections.length,
+            sections_by_type: p.serp_sections.reduce((m, s) => {
+              m[s.type] = (m[s.type] || 0) + 1;
+              return m;
+            }, {}),
             corrected_query: p.corrected_query,
             original_query: p.original_query,
             correction_note: p.correction_note,
