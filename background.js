@@ -35,15 +35,20 @@ function sendToContentScript(tabId, payload, sendResponse, retry = true) {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.target === 'contentScript') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
       if (!tabs || tabs.length === 0) {
         sendResponse({ error: '没有活动标签页' });
         return;
       }
       const activeTab = tabs[0];
-      const pageUrl = activeTab.url ? new URL(activeTab.url) : null;
+      let pageUrl = null;
+      try {
+        if (activeTab.url) pageUrl = new URL(activeTab.url);
+      } catch (error) {
+        // A tab with a malformed or hidden URL cannot be inspected.
+      }
       if (!pageUrl || pageUrl.protocol !== 'https:' || pageUrl.hostname !== 'www.google.com') {
-        sendResponse({ error: '请先在 Google 搜索页面打开本扩展' });
+        sendResponse({ error: pageUrl ? '请先在 Google 搜索页面打开本扩展' : '无法读取当前标签页地址，请确认扩展拥有 www.google.com 访问权限并重新加载扩展' });
         return;
       }
       if ((request.payload.action === 'extractSerp' || request.payload.action === 'serpDiagnostics') && pageUrl.pathname !== '/search') {
