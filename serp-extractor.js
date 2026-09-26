@@ -1,7 +1,7 @@
 // Extractor adapted from keywords/tools/g-serp-collector.user.js v0.3.1.
 // The page script only reads the current Google SERP; the Side Panel owns export actions.
 (() => {
-  const VERSION = '0.3.1';
+  const VERSION = 'extension-1.1.2';
   let lastPayload = null;
   let lastError = null;
   const log = (...args) => console.log('[G SERP]', ...args);
@@ -43,50 +43,42 @@
     }
   }
 
-  // Spell/correction notices sit at the top of the SERP. Rather than hardcode
-  // one phrase, we try #taw first, then scan above #rso for a short block that
-  // reads like a notice (mentions results/mean/etc.) and links to another search.
-  // Covers: "Did you mean: X", "These/Showing/Including results for X",
-  // "Search instead for Y" / "Search only for Y" -- and future variants that
-  // reuse the same keywords.
+  // #taw can contain the entire ad block, including text injected by other
+  // extensions. Only accept a short correction notice with a search link.
   function getCorrection() {
     let text = "";
-    const taw = document.querySelector("#taw");
-    if (taw) text = trim(taw.innerText);
-    if (!text) {
-      const rso = document.querySelector("#rso");
-      const rsoTop = rso ? rso.getBoundingClientRect().top : Infinity;
-      const KW = /(results for|did you mean|search (?:instead|only) for|including results)/i;
-      const cands = document.querySelectorAll("div, span, p, a");
-      for (let i = 0; i < cands.length; i++) {
-        const el = cands[i];
-        const t = trim(el.innerText);
-        if (!t || t.length < 10 || t.length > 300) continue;
-        const rect = el.getBoundingClientRect();
-        if (rect.top < 0 || rect.top >= rsoTop) continue; // must sit above the results
-        if (!KW.test(t)) continue;
-        const hasLink =
-          el.tagName === "A"
-            ? /\/search\?/.test(el.href) && el.href.indexOf("q=") > -1
-            : !!el.querySelector('a[href*="/search?"][href*="q="]');
-        if (!hasLink) continue;
-        text = t;
-        break;
-      }
+    const rso = document.querySelector("#rso");
+    const notice = /(these are results for|showing results for|including results for|did you mean|search (?:instead|only) for|mostrando resultados (?:de|para)|quiz[aá]s quisiste decir|buscar (?:en su lugar|solo) por)/i;
+    const cands = document.querySelectorAll("div, span, p, a, #rso");
+    for (let i = 0; i < cands.length; i++) {
+      const el = cands[i];
+      if (el === rso) break;
+      if (rso && el.contains(rso)) continue;
+      const t = trim(el.innerText);
+      if (!t || t.length < 10 || t.length > 300 || !notice.test(t)) continue;
+      const hasLink = el.tagName === "A"
+        ? /\/search\?/.test(el.href) && el.href.includes("q=")
+        : !!el.querySelector('a[href*="/search?"][href*="q="]');
+      if (!hasLink) continue;
+      text = t;
+      break;
     }
     if (!text) return null;
     const out = { note: text, corrected: null, original: null };
     let m;
-    if ((m = text.match(/(?:These are results for|Showing results for|Including results for)\s*(.+)/i))) {
+    if ((m = text.match(/(?:These are results for|Showing results for|Including results for|Mostrando resultados (?:de|para))\s*(.+?)(?=\s+Search (?:instead|only) for|\s+Buscar (?:en su lugar|solo) por|$)/i))) {
       out.corrected = m[1].trim();
     }
-    if ((m = text.match(/Did you mean[:\s]*(.+)/i))) {
+    if ((m = text.match(/(?:Did you mean|Quiz[aá]s quisiste decir)[:\s]*(.+)/i))) {
       out.corrected = m[1].trim();
     }
     if ((m = text.match(/Search instead for\s*(.+)/i))) {
       out.original = m[1].trim();
     }
     if ((m = text.match(/Search only for\s*(.+)/i))) {
+      out.original = m[1].trim();
+    }
+    if ((m = text.match(/Buscar (?:en su lugar|solo) por\s*(.+)/i))) {
       out.original = m[1].trim();
     }
     return out;
@@ -162,10 +154,11 @@
     if (trim(hd && hd.innerText)) return trim(hd.innerText);
     const known = item.querySelector("div.hmTtFe, div.V5XKdd, .fcvS3c, .s3v9rd, .R8oyQc");
     if (trim(known && known.innerText)) return trim(known.innerText);
-    // longest leaf that isn't duration / "YouTube" / a bare separator
+    // Longest content leaf, excluding video metadata.
     let best = "";
     leafTexts(item).forEach((t) => {
-      if (t.length > best.length && !/^(\d+:\d{2}|YouTube|·)$/.test(t)) best = t;
+      if (/^(?:\d+:\d{2}(?::\d{2})?|YouTube(?:\s*[·•-].*)?|·|\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago)$/i.test(t)) return;
+      if (t.length > best.length) best = t;
     });
     if (best) return best;
     return trim(a && a.innerText);
@@ -216,7 +209,7 @@
           blk = blk.parentElement;
         }
         const hd = blk && blk.querySelector('[role="heading"], h3, div.hmTtFe, div.V5XKdd');
-        const title = trim(hd && hd.innerText) || trim(a.innerText);
+        const title = trim(hd && hd.innerText) || videoTitle(a, a);
         if (!title) return;
         seen.add(a.href);
         out.push({ type: "video", title: title, url: a.href, desc: null });
@@ -291,20 +284,18 @@
   function extractRelatedSearches() {
     const out = [];
     const seen = new Set();
+    const currentQuery = trim(getQuery()).toLowerCase();
     const scopes = ["#botstuff", "#bres"];
     scopes.forEach((sel) => {
       const root = document.querySelector(sel);
       if (!root) return;
       root.querySelectorAll('a[href*="/search?"]').forEach((a) => {
         try {
-          let q = "";
-          try {
-            q = new URL(a.href).searchParams.get("q") || "";
-          } catch (e) {}
-          const text = trim(a.innerText || q);
-          if (!text || seen.has(text)) return;
-          seen.add(text);
-          out.push(text);
+          const url = new URL(a.href, location.href);
+          const query = trim(url.searchParams.get("q"));
+          if (url.origin !== location.origin || url.pathname !== "/search" || url.searchParams.has("start") || !query || query.toLowerCase() === currentQuery || seen.has(query)) return;
+          seen.add(query);
+          out.push(query);
         } catch (e) {
           logErr("related search item parse failed:", e);
         }
