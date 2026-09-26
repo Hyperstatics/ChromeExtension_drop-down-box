@@ -1,7 +1,7 @@
 // Extractor adapted from keywords/tools/g-serp-collector.user.js v0.3.1.
 // The page script only reads the current Google SERP; the Side Panel owns export actions.
 (() => {
-  const VERSION = 'extension-1.1.4';
+  const VERSION = 'extension-1.1.5';
   let lastPayload = null;
   let lastError = null;
   const log = (...args) => console.log('[G SERP]', ...args);
@@ -338,8 +338,27 @@
     if (/sponsored results|resultados patrocinados|anuncios/i.test(start)) return 'sponsored';
     if (/ai overview|vista creada con ia|resumen creado con ia/i.test(start)) return 'ai_overview';
     if (/find related products\s*&\s*services|buscar productos y servicios relacionados/i.test(start)) return 'related_products_services';
-    if (/^(videos|vídeos)\b/i.test(start)) return 'videos';
+    if (/^(videos|vídeos)(?:\n|$)/i.test(start)) return 'videos';
     return 'result';
+  }
+
+  function cleanSectionText(text, type) {
+    if (type === 'ai_overview') {
+      text = text.split(/\n(?:Save to Google Drive|Save to Gmail|Transcribing\.\.\.|Show more)(?:\n|$)/i)[0];
+    }
+    const lines = text.split('\n').map((line) => line.replace(/Read more$/i, '').trim()).filter((line) =>
+      line && !/^(My Ad Center|· Translate this page|Show sponsored resultsHide sponsored results|View all)$/i.test(line)
+    );
+    const cleaned = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (i + 1 < lines.length && cleaned.length >= 2 &&
+          lines[i] === cleaned[cleaned.length - 2] && lines[i + 1] === cleaned[cleaned.length - 1]) {
+        i++;
+        continue;
+      }
+      cleaned.push(lines[i]);
+    }
+    return cleaned.join('\n');
   }
 
   function sectionLinks(root, type, results) {
@@ -355,7 +374,8 @@
         const parsed = new URL(url);
         const destination = parsed.searchParams.get('adurl');
         if (destination && /^https?:\/\//.test(destination)) url = destination;
-        else if (parsed.hostname.endsWith('google.com') && parsed.pathname === '/search') return;
+        else if (parsed.hostname.endsWith('google.com') &&
+                 (parsed.pathname === '/search' || parsed.pathname === '/aclk')) return;
       } catch (e) { return; }
       if (seen.has(url)) return;
       seen.add(url);
@@ -365,8 +385,11 @@
       const cards = root.querySelectorAll('[data-text-ad]');
       if (cards.length) {
         cards.forEach((card) => {
-          const a = card.querySelector('a[href]');
-          if (a) add(a);
+          Array.prototype.some.call(card.querySelectorAll('a[href]'), (a) => {
+            const before = links.length;
+            add(a);
+            return links.length > before;
+          });
         });
       } else {
         const hosts = new Set();
@@ -432,11 +455,19 @@
       const body = nativeText(root);
       if (body.length < 20) return;
       const type = root === taw ? 'sponsored' : sectionType(body);
+      if (type === 'result' && !root.querySelector('h3') &&
+          /^(?:AI Mode\n)?All\nVideos\nShort videos\nImages\nForums/i.test(body)) return;
       // #taw can also contain correction notices. Store only its sponsored part.
       const text = root === taw && type === 'sponsored'
         ? body.slice(body.search(/sponsored results|resultados patrocinados|anuncios/i))
         : body;
-      out.push({ type, text, links: sectionLinks(root, type, results) });
+      const relatedStart = text.search(/(?:^|\n)(?:Find related products\s*&\s*services|Buscar productos y servicios relacionados)(?=\n|$)/i);
+      if (type === 'sponsored' && relatedStart > 0) {
+        out.push({ type, text: cleanSectionText(text.slice(0, relatedStart), type), links: sectionLinks(root, type, results) });
+        out.push({ type: 'related_products_services', text: cleanSectionText(text.slice(relatedStart).trim(), 'related_products_services'), links: [] });
+      } else {
+        out.push({ type, text: cleanSectionText(text, type), links: sectionLinks(root, type, results) });
+      }
     });
     return out;
   }
@@ -537,7 +568,8 @@
     if (p.correction_note) {
       lines.push(`修正提示: ${p.correction_note.replace(/\n+/g, " | ")}`);
     }
-    lines.push(`页面: ${p.page_url}`);
+    const page = new URL(p.page_url);
+    lines.push(`页面: ${page.origin}${page.pathname}?q=${encodeURIComponent(p.query)}`);
     lines.push(`抓取时间: ${p.captured_at}`);
     lines.push("");
 
