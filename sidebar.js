@@ -75,7 +75,7 @@ function sleep(ms) {
 collectForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const mainKeyword = mainQuery.value.trim();
-  const maxDepth = parseInt(depthInput.value, 10) || 1;
+  const maxDepth = Number.parseInt(depthInput.value, 10);
   let baseDelay = parseFloat(delayInput.value) * 1000 || 2500;
   if (!mainKeyword) return;
 
@@ -222,5 +222,78 @@ pageScrapeForm.addEventListener('submit', async (e) => {
     renderResults([]);
   } finally {
     pageScrapeForm.querySelector('.primary-btn').disabled = false;
+  }
+});
+
+const serpExtractBtn = document.getElementById('serpExtractBtn');
+const serpResults = document.getElementById('serpResults');
+const serpStats = document.getElementById('serpStats');
+const serpPreview = document.getElementById('serpPreview');
+let serpCapture = null;
+
+async function requestPage(action) {
+  const response = await chrome.runtime.sendMessage({
+    target: 'contentScript',
+    payload: { action }
+  });
+  if (response?.error) throw new Error(response.error);
+  if (!response) throw new Error('页面脚本没有返回结果，请刷新 Google 页面后重试');
+  return response;
+}
+
+serpExtractBtn.addEventListener('click', async () => {
+  serpExtractBtn.disabled = true;
+  try {
+    const response = await requestPage('extractSerp');
+    serpCapture = response;
+    serpStats.textContent = response.stats;
+    serpPreview.textContent = response.readableText;
+    serpResults.hidden = false;
+    updateStatus('SERP 提取完成');
+  } catch (error) {
+    serpCapture = null;
+    serpResults.hidden = true;
+    updateStatus(`SERP 提取失败: ${error.message}`);
+  } finally {
+    serpExtractBtn.disabled = false;
+  }
+});
+
+async function copySerp(value) {
+  if (!serpCapture) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    updateStatus('已复制到剪贴板');
+  } catch (error) {
+    updateStatus(`复制失败: ${error.message}`);
+  }
+}
+
+document.getElementById('serpCopyTextBtn').addEventListener('click', () => copySerp(serpCapture?.readableText));
+document.getElementById('serpCopyJsonBtn').addEventListener('click', () => copySerp(JSON.stringify(serpCapture?.payload, null, 2)));
+
+document.getElementById('serpDownloadBtn').addEventListener('click', () => {
+  if (!serpCapture) return;
+  const query = (serpCapture.payload.query || 'serp').replace(/[^\w-]+/g, '_').slice(0, 40) || 'serp';
+  const date = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify(serpCapture.payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `g_serp_${query}_${date}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  updateStatus('JSON 下载已开始');
+});
+
+document.getElementById('serpDiagnosticsBtn').addEventListener('click', async () => {
+  try {
+    const diagnostics = await requestPage('serpDiagnostics');
+    await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
+    updateStatus('诊断已复制到剪贴板');
+  } catch (error) {
+    updateStatus(`诊断失败: ${error.message}`);
   }
 });

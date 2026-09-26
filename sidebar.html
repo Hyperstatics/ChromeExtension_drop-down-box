@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Google Suggest Collector</title>
+  <title>Google Search Collector</title>
   <link rel="stylesheet" href="sidebar.css">
 </head>
 <body>
   <div class="container">
     <header class="header">
-      <h1>Google 建议词采集</h1>
+      <h1>Google 搜索采集</h1>
     </header>
 
     <!-- API Mode -->
@@ -40,6 +40,22 @@
 
         <button type="submit" class="primary-btn">开始采集</button>
       </form>
+    </div>
+
+    <div class="form-section secondary-section">
+      <div class="section-label">SERP 内容提取</div>
+      <div class="hint">在 Google 搜索结果页提取网页、视频、讨论、PAA 和相关搜索。</div>
+      <button type="button" id="serpExtractBtn" class="primary-btn secondary">提取本页</button>
+      <div id="serpResults" class="serp-results" hidden>
+        <div id="serpStats" class="serp-stats"></div>
+        <div class="serp-actions">
+          <button type="button" id="serpCopyTextBtn" class="secondary-btn">复制文本</button>
+          <button type="button" id="serpCopyJsonBtn" class="secondary-btn">复制 JSON</button>
+          <button type="button" id="serpDownloadBtn" class="secondary-btn">下载 JSON</button>
+        </div>
+        <details><summary>预览</summary><pre id="serpPreview"></pre></details>
+      </div>
+      <button type="button" id="serpDiagnosticsBtn" class="secondary-btn serp-diagnostics">复制诊断</button>
     </div>
 
     <!-- Page Scrape Mode -->

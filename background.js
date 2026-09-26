@@ -13,7 +13,7 @@ function sendToContentScript(tabId, payload, sendResponse, retry = true) {
         // Dynamically inject content script and retry once
         chrome.scripting.executeScript({
           target: { tabId },
-          files: ['content-script.js']
+          files: ['content-script.js', 'serp-extractor.js']
         }, () => {
           if (chrome.runtime.lastError) {
             sendResponse({ error: chrome.runtime.lastError.message });
@@ -41,8 +41,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
       const activeTab = tabs[0];
-      if (!activeTab.url || !activeTab.url.startsWith('https://www.google.com')) {
+      const pageUrl = activeTab.url ? new URL(activeTab.url) : null;
+      if (!pageUrl || pageUrl.protocol !== 'https:' || pageUrl.hostname !== 'www.google.com') {
         sendResponse({ error: '请先在 Google 搜索页面打开本扩展' });
+        return;
+      }
+      if ((request.payload.action === 'extractSerp' || request.payload.action === 'serpDiagnostics') && pageUrl.pathname !== '/search') {
+        sendResponse({ error: '请先打开 Google 搜索结果页' });
         return;
       }
       sendToContentScript(activeTab.id, request.payload, sendResponse);
