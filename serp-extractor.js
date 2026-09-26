@@ -1,7 +1,7 @@
 // Extractor adapted from keywords/tools/g-serp-collector.user.js v0.3.1.
 // The page script only reads the current Google SERP; the Side Panel owns export actions.
 (() => {
-  const VERSION = 'extension-1.1.3';
+  const VERSION = 'extension-1.1.4';
   let lastPayload = null;
   let lastError = null;
   const log = (...args) => console.log('[G SERP]', ...args);
@@ -342,23 +342,64 @@
     return 'result';
   }
 
-  function sectionLinks(root) {
+  function sectionLinks(root, type, results) {
+    if (type === 'ai_overview' || type === 'related_products_services') return [];
     const links = [];
     const seen = new Set();
-    root.querySelectorAll('a[href]').forEach((a) => {
+    const add = (a) => {
       if (isForeign(a)) return;
       const label = trim(nativeText(a));
-      const url = a.href;
-      if (!label || !/^https?:/.test(url) || seen.has(url)) return;
+      let url = a.href;
+      if (!label || !/^https?:/.test(url)) return;
+      try {
+        const parsed = new URL(url);
+        const destination = parsed.searchParams.get('adurl');
+        if (destination && /^https?:\/\//.test(destination)) url = destination;
+        else if (parsed.hostname.endsWith('google.com') && parsed.pathname === '/search') return;
+      } catch (e) { return; }
+      if (seen.has(url)) return;
       seen.add(url);
       links.push({ label, url });
-    });
+    };
+    if (type === 'sponsored') {
+      const cards = root.querySelectorAll('[data-text-ad]');
+      if (cards.length) {
+        cards.forEach((card) => {
+          const a = card.querySelector('a[href]');
+          if (a) add(a);
+        });
+      } else {
+        const hosts = new Set();
+        root.querySelectorAll('a[href]').forEach((a) => {
+          const before = links.length;
+          add(a);
+          if (links.length === before) return;
+          const host = safeHost(links[links.length - 1].url);
+          if (hosts.has(host)) links.pop();
+          else hosts.add(host);
+        });
+      }
+    } else if (type === 'videos') {
+      const videoUrls = new Set(results.filter((r) => r.type === 'video').map((r) => r.url));
+      root.querySelectorAll('a[href*="youtube.com/watch"], a[href*="youtu.be/"]').forEach((a) => {
+        if (videoUrls.has(a.href)) add(a);
+      });
+    } else {
+      const h3 = root.querySelector('h3');
+      const primary = h3 && h3.closest('a[href]');
+      if (primary) add(primary);
+      else {
+        const candidate = Array.prototype.find.call(root.querySelectorAll('a[href]'),
+          (a) => !isForeign(a) && trim(nativeText(a)).length > 3);
+        if (candidate) add(candidate);
+      }
+    }
     return links;
   }
 
   // Google mixes native modules with result cards. Keep their page order and
   // text so new SERP modules remain visible even before they have a parser.
-  function extractSections() {
+  function extractSections(results) {
     const roots = [];
     const taw = document.querySelector('#taw');
     if (taw && /sponsored results|resultados patrocinados|anuncios/i.test(nativeText(taw))) roots.push(taw);
@@ -369,9 +410,11 @@
       roots.push(...(blocks.length ? blocks : rso.children));
     }
     // Featured modules can sit outside #rso, depending on the Google layout.
-    const moduleName = /^(sponsored results|resultados patrocinados|ai overview|vista creada con ia|resumen creado con ia|find related products\s*&\s*services|buscar productos y servicios relacionados|videos|vídeos)$/i;
-    document.querySelectorAll('#main *, #botstuff *, #bres *').forEach((el) => {
-      if (el.children.length || !moduleName.test(trim(el.textContent)) || isForeign(el)) return;
+    const moduleName = /^(sponsored results|resultados patrocinados|ai overview|vista creada con ia|resumen creado con ia|find related products\s*&\s*services|buscar productos y servicios relacionados|videos|vídeos)(?:\s|$)/i;
+    document.querySelectorAll('h2, h3, [role="heading"], span, div').forEach((el) => {
+      if (isForeign(el) || el.childElementCount > 5 || el.textContent.length > 100 ||
+          !moduleName.test(trim(el.textContent)) ||
+          Array.prototype.some.call(el.children, (child) => moduleName.test(trim(child.textContent)))) return;
       let block = el.closest('.MjjYud');
       if (!block) {
         block = el;
@@ -393,7 +436,7 @@
       const text = root === taw && type === 'sponsored'
         ? body.slice(body.search(/sponsored results|resultados patrocinados|anuncios/i))
         : body;
-      out.push({ type, text, links: sectionLinks(root) });
+      out.push({ type, text, links: sectionLinks(root, type, results) });
     });
     return out;
   }
@@ -441,7 +484,7 @@
     const results = organic.concat(videos).concat(discussions);
     const paa = extractPeopleAlsoAsk();
     const related = extractRelatedSearches();
-    const sections = extractSections();
+    const sections = extractSections(results);
     const payload = {
       query: getQuery(),
       corrected_query: correction ? correction.corrected : null,
