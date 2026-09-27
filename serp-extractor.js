@@ -1,7 +1,7 @@
 // Extractor adapted from keywords/tools/g-serp-collector.user.js v0.3.1.
 // The page script only reads the current Google SERP; the Side Panel owns export actions.
 (() => {
-  const VERSION = 'extension-1.1.5';
+  const VERSION = 'extension-1.1.6';
   let lastPayload = null;
   let lastError = null;
   const log = (...args) => console.log('[G SERP]', ...args);
@@ -361,6 +361,18 @@
     return cleaned.join('\n');
   }
 
+  function ratingText(root, body) {
+    const compact = trim(body);
+    if (compact.length < 60 && /\b[0-5][.,]\d\b/.test(compact) &&
+        /\(\s*[\d,.]+\s*\)|reviews?|reseñas?|ratings?|stars?|estrellas?/i.test(compact)) return compact;
+    const labels = Array.prototype.map.call(root.querySelectorAll('[aria-label]'),
+      (el) => trim(el.getAttribute('aria-label'))).filter((label) =>
+        /\b[0-5][.,]\d\b/.test(label) && /reviews?|reseñas?|ratings?|stars?|estrellas?/i.test(label));
+    if (!labels.length) return null;
+    const count = compact.match(/\(\s*[\d,.]+\s*\)/);
+    return count && !labels[0].includes(count[0]) ? `${labels[0]} ${count[0]}` : labels[0];
+  }
+
   function sectionLinks(root, type, results) {
     if (type === 'ai_overview' || type === 'related_products_services') return [];
     const links = [];
@@ -453,6 +465,14 @@
     const out = [];
     roots.forEach((root) => {
       const body = nativeText(root);
+      if (body.length < 60 && !root.querySelector('h3')) {
+        const rating = ratingText(root, body);
+        const previous = out[out.length - 1];
+        if (rating && previous && previous.type === 'result' && !previous.text.includes(rating)) {
+          previous.text += '\n' + rating;
+          return;
+        }
+      }
       if (body.length < 20) return;
       const type = root === taw ? 'sponsored' : sectionType(body);
       if (type === 'result' && !root.querySelector('h3') &&
@@ -466,7 +486,12 @@
         out.push({ type, text: cleanSectionText(text.slice(0, relatedStart), type), links: sectionLinks(root, type, results) });
         out.push({ type: 'related_products_services', text: cleanSectionText(text.slice(relatedStart).trim(), 'related_products_services'), links: [] });
       } else {
-        out.push({ type, text: cleanSectionText(text, type), links: sectionLinks(root, type, results) });
+        const section = { type, text: cleanSectionText(text, type), links: sectionLinks(root, type, results) };
+        if (type === 'result' && !/\b[0-5][.,]\d\b.*\([\d,.]+\)/.test(trim(section.text))) {
+          const rating = ratingText(root, body);
+          if (rating && !section.text.includes(rating)) section.text += '\n' + rating;
+        }
+        out.push(section);
       }
     });
     return out;
@@ -502,6 +527,25 @@
       taw: has("#taw"),
       search_box: has('input[name="q"], textarea[name="q"]'),
     };
+  }
+
+  function probeResultBlocks() {
+    const rso = document.querySelector('#rso');
+    if (!rso) return [];
+    return Array.prototype.filter.call(rso.querySelectorAll('.MjjYud'),
+      (el) => !el.parentElement.closest('.MjjYud')).map((el, index) => ({
+        index,
+        text_preview: nativeText(el).slice(0, 280),
+        rating_labels: Array.prototype.map.call(el.querySelectorAll('[aria-label]'),
+          (node) => trim(node.getAttribute('aria-label'))).filter((label) =>
+            /reviews?|reseñas?|ratings?|stars?|estrellas?/i.test(label)).slice(0, 6),
+        children: Array.prototype.map.call(el.children, (child) => ({
+          tag: child.tagName,
+          class_name: typeof child.className === 'string' ? child.className.slice(0, 100) : '',
+          role: child.getAttribute('role'),
+          text_preview: nativeText(child).slice(0, 80),
+        })).slice(0, 8),
+      }));
   }
 
   function extractAll() {
@@ -653,6 +697,7 @@
       script_version: VERSION,
       captured_at: new Date().toISOString(),
       dom_probe: probeDom(),
+      result_blocks: probeResultBlocks(),
       last_extract: p
         ? {
             query: p.query,
